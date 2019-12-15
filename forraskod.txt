@@ -1,15 +1,15 @@
-#include <Servo.h>
+p#include <Servo.h>
 
 Servo myservo;  // create servo object to control a servo
 // twelve servo objects can be created on most boards
 
-const uint8_t szervoPin = 3;
+
 // szervó változók pozíció
 int maxPos = 19;
 int pos = 0;    // variable to store the servo position
 
 const int nincsValtozas = 15;
-const int utvegeVarakozas = 100;
+const int utvegeVarakozas = 10;
 int utvegeVisszaszamlalas = utvegeVarakozas;
 const uint8_t maxSpeed = 150;
 const uint8_t slowSpeed = 70; 
@@ -27,17 +27,18 @@ uint8_t palyaPin[4][2] = {
 const uint8_t elore = 0;
 const uint8_t hatra = 1;
 
-int relePin = 7;
-const uint8_t palya1Elore = 5;   //5
-const uint8_t palya1Hatra = 13;    //13
-const uint8_t palya2Elore = 6;
-const uint8_t palya2Hatra = 11;
-const uint8_t palya3Elore = 10;   //10
-const uint8_t palya3Hatra = 9;    //9
-const uint8_t szenzorPinA = 0;
-const uint8_t szenzorPinB = 8;
-const uint8_t szenzorPinC = 2;
-const uint8_t szenzorPinD = 4;
+const int szervoPin = 9;
+const int relePin = 7;
+const int palya1Elore = 3;   //5
+const int palya1Iranyvaltas = 13;  //13
+const int palya2Elore = 6;   //6 
+const int palya2Hatra = 11;  //11
+const int palya3Elore = 12;   //10
+const int palya3Hatra = 5;    //9
+const int szenzorPinA = 0;
+const int szenzorPinB = 8;
+const int szenzorPinC = 2;
+const int szenzorPinD = 4;
 
 const uint8_t trainDelay = 30;
 const uint8_t szenzorA = 16; // 5. bit = 1
@@ -52,8 +53,9 @@ const uint8_t utElore = 0;
 const uint8_t utHatra = 128;
 const int iranyvaltas = 256;
 const int lassit = 512;
-const int gyorsit = 1024; // 128 + 256 + 512 + 1024 = 1920
-const int iranyMaszk = 1920;
+const int gyorsit = 1024; // 128 + 256 + 512 + 1024 + 2048 = 3968
+const int all = 2048;
+const int iranyMaszk = 3968;
 uint8_t routeIndex = 0;
 uint8_t kovetkezoSzenzor = 0;
 uint8_t valtoAllitas = 0;
@@ -71,14 +73,14 @@ int utIrany[3] = {elore, elore, elore};
 //második index: milyen utasításokat kell tenni az adott lépésben
 //melyik szakaszok kapjanak áramot: 1-es, 2-es, 3-as szakasz, 0 = utasitasok vége
 // ha eléri a megadott szenzort, átlép a következő lépésre az úton
-int  route[7][8] = {
+int  route[8][8] = {
   {(1 | gyorsit), (2 | gyorsit), valtoZar, szenzorA, 0},
-  {(1 | gyorsit), (2 | gyorsit), szenzorB, 0},
-  {(2 | iranyvaltas), (3 | gyorsit | utHatra),  valtoNyit, szenzorC, 0},
-  {(3 | utHatra), (2 | utHatra), (1 | utHatra), valtoZar, szenzorA, 0},
+  {(1 | gyorsit), (2 | gyorsit), szenzorB, valtoZar, 0},
+  {(2 | iranyvaltas),  valtoNyit, szenzorC, 0},
+  {(2 | utHatra), (3 | gyorsit | utHatra),  (1 | utHatra), valtoZar, szenzorA, 0},
   {(1 | lassit | utHatra), (3 | utHatra), (2 | utHatra), valtoNyit, szenzorC, 0},
-  {(3 | utHatra), (2 | utHatra), valtoNyit, szenzorD, 0},
-  {(3 | lassit | utHatra), utVege, 0}
+  {(3 | utHatra), (2 | utHatra), (1 | all ), valtoNyit, szenzorD, 0},
+  {(3 | lassit | utHatra), (1 | all ), utVege, 0}
   };
 
 int expAccelerate[3] = {expMin, expMin, expMin};
@@ -89,10 +91,10 @@ int vonatDelay = 0;
 // the setup routine runs once when you press reset:
 void setup() {
   // just for testing Serial.begin(9600);
-  //Serial.begin(9600);
-  myservo.attach(szervoPin);  // attaches the servo on pin 13 to the servo object
+  Serial.begin(9600);
+  
   pinMode(palya1Elore, OUTPUT);
-  pinMode(palya1Hatra, OUTPUT);
+  pinMode(palya1Iranyvaltas, OUTPUT);
   pinMode(palya2Elore, OUTPUT);
   pinMode(palya2Hatra, OUTPUT);
   pinMode(palya3Elore, OUTPUT);
@@ -107,14 +109,13 @@ void setup() {
   myservo.write(pos);
   valtoAllitas = valtoNyit;
   ValtoInicializalas();
-
+  myservo.attach(szervoPin);  // attaches the servo on pin 13 to the servo object
   // indulás előtt vár 5 mp-et
   delay(5000);
 }
 
 // the loop routine runs over and over again forever:
 void loop() {
-    
 ReadSensors();
 
 if (kovetkezoSzenzor == 0){
@@ -125,6 +126,7 @@ if (kovetkezoSzenzor == 0){
     kovetkezoSzenzor = 0;
     utvegeVisszaszamlalas = utvegeVarakozas;
     routeIndex = 0;
+    inicializalas();
     }
   else if (kovetkezoSzenzor == utVege){
     utvegeVisszaszamlalas--;
@@ -133,15 +135,14 @@ if (kovetkezoSzenzor == 0){
     NextStep();
     }
 
-Iranyvaltas(0, palya1Elore, palya1Hatra, utAllapot1);
 Iranyvaltas(1, palya2Elore, palya2Hatra, utAllapot2);
 Iranyvaltas(2, palya3Elore, palya3Hatra, utAllapot3);
 
 vonatDelay = 0;
-// beállítja adott útszakasz sebességét
 
+// beállítja adott útszakasz sebességét
 // 1-es út 0-ás indexszel
-utBeallitas(0, palya1Elore, palya1Hatra, utAllapot1);
+utBeallitasRelevel(0, palya1Elore, palya1Iranyvaltas, utAllapot1);
 // 2-es út 0-ás indexszel
 utBeallitas(1, palya2Elore, palya2Hatra, utAllapot2);
 // 3-as út 0-ás indexszel
@@ -157,7 +158,6 @@ delay(20 + vonatDelay);
 void AtallitjaValtot(){
   
   if (valtoAllitas == valtoZar){
-  
   if (pos < maxPos){
     pos++;
     myservo.write(pos);
@@ -165,13 +165,13 @@ void AtallitjaValtot(){
   }
   else {
       if (pos > 0){
-    pos--;
-    myservo.write(pos);
-    }
+        pos--;
+        myservo.write(pos);
+        }
     }
 
   if (pos == maxPos / 2){
-    ValtoPolaritasValtas();
+      ValtoPolaritasValtas();
     }
 }
 
@@ -191,7 +191,7 @@ void Iranyvaltas(int ut, int utPinElore, int utPinHatra, int allapot){
 
   // gyorsít ??
   if (bitRead(utIrany[ut], 10) == 1){
-    increment = 1;
+    increment = 2;
     int x = bitRead(allapot, 7) == 0 ? 1 : 0;
     bitWrite(allapot, 7, x);
     }
@@ -204,9 +204,9 @@ void Iranyvaltas(int ut, int utPinElore, int utPinHatra, int allapot){
       }
 
       if (bitRead(allapot, 7) == 0){
-    analogWrite(utPinElore, speed[ut]);
-    analogWrite(utPinHatra, 0);
-    }
+        analogWrite(utPinElore, speed[ut]);
+        analogWrite(utPinHatra, 0);
+        }
     else {
       analogWrite(utPinHatra, speed[ut]);
       analogWrite(utPinElore, 0);
@@ -220,11 +220,18 @@ void utBeallitas(int ut, int utPinElore, int utPinHatra, int allapot){
        // irányváltás?
   if (bitRead(allapot, 8) == 1){
     return;}
-
-  increment = 0;
+    
+increment = 0;
+    // stop?
+if (bitRead(allapot, 11) == 1){
+  analogWrite(utPinElore, 0);
+  analogWrite(utPinHatra, 0);
+  return;
+  }
+  
   // lassít?
   if (bitRead(allapot, 9) == 1){
-    increment = -1;
+    increment = -2;
     GyorsitLassit(ut);
     }
   // gyorsít?
@@ -233,7 +240,7 @@ void utBeallitas(int ut, int utPinElore, int utPinHatra, int allapot){
     GyorsitLassit(ut);
     }
     // fullSpeed
-    else { 
+    else if (bitRead(allapot, 9) == 0 && bitRead(allapot, 10) == 0 ){ 
     speed[ut] = maxSpeed;
     }
   
@@ -248,6 +255,49 @@ if (bitRead(allapot, 7) == 0){
       utIrany[ut] = hatra;
       }
   }
+
+void utBeallitasRelevel(int ut, int utPinElore, int PinReleIranyvalto, int allapot){
+  if (allapot == nincsValtozas){
+    return; // nem változik semmi se
+    }   
+       // irányváltás?
+  if (bitRead(allapot, 8) == 1){
+    return;}
+    
+increment = 0;
+    // stop?
+if (bitRead(allapot, 11) == 1){
+  analogWrite(utPinElore, 0);
+  return;
+  }
+  
+  // lassít?
+  if (bitRead(allapot, 9) == 1){
+    increment = -2;
+    GyorsitLassit(ut);
+    }
+  // gyorsít?
+  else if (bitRead(allapot, 10) == 1){
+    increment = 1;
+    GyorsitLassit(ut);
+    }
+    // fullSpeed
+    else if (bitRead(allapot, 9) == 0 && bitRead(allapot, 10) == 0 ){ 
+    speed[ut] = maxSpeed;
+    }
+  
+if (bitRead(allapot, 7) == 0){
+    analogWrite(utPinElore, speed[ut]);
+    digitalWrite(PinReleIranyvalto, HIGH);
+    utIrany[ut] = elore;
+    }
+    else {
+      analogWrite(utPinElore, speed[ut]);
+      analogWrite(PinReleIranyvalto, LOW);
+      utIrany[ut] = hatra;
+      }
+  }
+
 
 bool ElerteKovetkezoSzenzort(){
   /// 3: ha 3 a szenzor értéke, az a high érték (a ki bekapcsolás megelőzése miatt, ha 3x30 ms-ig jelez a szenzor, akkor biztosan magas az értéke)
@@ -343,14 +393,17 @@ bool GyorsitLassit(int utIndex){
   // change the speed for next time through the loop:
   speed[utIndex] = speed[utIndex] + increment;
 
-  if (increment == 1 && speed[utIndex] < startSpeed)
+  if (increment > 0 && speed[utIndex] < startSpeed)
   {
     speed[utIndex] = startSpeed;
     }
 
+if (speed[utIndex] < startSpeed){
+  speed[utIndex] = 0;
+  }
+
  // reverse the direction of the fading at the ends of the fade:
-  if (speed[utIndex] < startSpeed){
-    speed[utIndex] = startSpeed;
+  if (increment < 0 && speed[utIndex] < startSpeed){
     return true; // vége a gyorsításnak / lassításnak
   }
   if (speed[utIndex] > maxSpeed){
@@ -403,13 +456,42 @@ void ValtoInicializalas(){
   }
 }
 
+// for debugging
 void Print(String text){
-  //Serial.println(text);
+  Serial.println(text);
   //delay(1000);
   }
 
 
 void PrintNumber(int number){
-  //Serial.println(number);
+  Serial.println(number);
   //delay(20);
+  }
+
+void inicializalas(){
+  ValtoInicializalas();
+ kovetkezoSzenzor = 0;
+ valtoAllitas = 0;
+ szenzorAllapotA = 0;
+ szenzorAllapotB = 0;
+ szenzorAllapotC = 0;
+ szenzorAllapotD = 0;
+ utAllapot1 = 0;
+ utAllapot2 = 0;
+ utAllapot3 = 0;
+ utIrany[0] = elore;
+utIrany[1] = elore;
+utIrany[2] = elore;
+expAccelerate[0] = expMin;
+expAccelerate[1] = expMin;
+expAccelerate[2] = expMin;
+speed[0] = startSpeed;
+speed[1] = startSpeed;
+speed[2] = startSpeed; // how fast the train
+increment = 1; // how many points to increment the trainPin by
+vonatDelay = 0;
+analogWrite(palya2Elore,0);
+analogWrite(palya2Hatra,0);
+analogWrite(palya3Hatra,0);
+analogWrite(palya1Elore,0);
   }
